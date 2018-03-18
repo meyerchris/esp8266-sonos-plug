@@ -26,9 +26,10 @@ void ethConnectError() {
 WiFiClient g_client;
 SonosUPnP g_sonos = SonosUPnP(g_client, ethConnectError);
 
-#define SONOS_STATUS_POLL_DELAY_MS 10000
+#define SONOS_STATUS_POLL_DELAY_MS 1000
 // Delay before turning plug off (5 [min] * 60 [sec/min] * 1000 [msec/sec] = 300000 [msec])
-#define PLUG_POWER_DELAY_MS 300000
+// #define PLUG_POWER_DELAY_MS 300000
+#define PLUG_POWER_DELAY_MS 60000
 unsigned long g_sonosLastStateUpdate = 0;
 unsigned long g_sonosLastTimePlaying = 0;
 
@@ -189,9 +190,9 @@ void loop() {
 
   if (g_sonosLastStateUpdate > millis() || millis() > g_sonosLastStateUpdate + SONOS_STATUS_POLL_DELAY_MS) {
 
+    // bool plugIsOn = is_on();
     bool sonosIsPlaying = g_sonos.getState(g_sonosIP) == SONOS_STATE_PLAYING;
     bool sonosIsMuted = g_sonos.getMute(g_sonosIP);
-    bool plugIsOn = is_on();
 
     Serial.println("");
 
@@ -201,8 +202,8 @@ void loop() {
     Serial.print("Sonos is muted: ");
     Serial.println(sonosIsMuted);
 
-    Serial.print("Plug is on: ");
-    Serial.println(plugIsOn);
+    // Serial.print("Plug is on: ");
+    // Serial.println(plugIsOn);
 
     Serial.println("");
 
@@ -213,11 +214,14 @@ void loop() {
 
       g_sonosLastTimePlaying = millis();
 
-      if (!plugIsOn) {
-        Serial.println("Sonos is playing but plug is off. Turning it on.");
-        turn_on();
-      }
-    } else if (plugIsOn) {
+      // if (!plugIsOn) {
+      //   Serial.println("Sonos is playing but plug is off. Turning it on.");
+      //   turn_on();
+      // }
+      Serial.println("Sonos is playing, turning plug on (may already be on).");
+      turn_on();
+    // } else if (plugIsOn) {
+    } else {
       // If Sonos is not playing, but the plug is on:
       // - Turn the plug off if it's been more than 5 minutes
       // - If plug isn't on and music is playing, turn it on!
@@ -231,12 +235,12 @@ void loop() {
         Serial.println("--> Turning off plug.");
         turn_off();
       }
-    } else {
-      // Sonos isn't playing, and plug is off. Nothing to do.
-      unsigned long timeSincePlayingS = (millis() - g_sonosLastTimePlaying)/1000;
-      Serial.print("Sonos isn't playing and the plug is off. It's been ");
-      Serial.print(timeSincePlayingS);
-      Serial.println(" seconds since something last played.");
+    // } else {
+    //   // Sonos isn't playing, and plug is off. Nothing to do.
+    //   unsigned long timeSincePlayingS = (millis() - g_sonosLastTimePlaying)/1000;
+    //   Serial.print("Sonos isn't playing and the plug is off. It's been ");
+    //   Serial.print(timeSincePlayingS);
+    //   Serial.println(" seconds since something last played.");
     }
 
 
