@@ -26,10 +26,9 @@ void ethConnectError() {
 WiFiClient g_client;
 SonosUPnP g_sonos = SonosUPnP(g_client, ethConnectError);
 
-#define SONOS_STATUS_POLL_DELAY_MS 1000
+#define SONOS_STATUS_POLL_DELAY_MS 5000
 // Delay before turning plug off (5 [min] * 60 [sec/min] * 1000 [msec/sec] = 300000 [msec])
-// #define PLUG_POWER_DELAY_MS 300000
-#define PLUG_POWER_DELAY_MS 60000
+#define PLUG_POWER_DELAY_MS 300000
 unsigned long g_sonosLastStateUpdate = 0;
 unsigned long g_sonosLastTimePlaying = 0;
 
@@ -162,6 +161,31 @@ bool turn_off() {
 }
 
 //+=============================================================================
+// Check if WiFi is connected, start if not
+//
+void check_wifi() {
+  if (WiFi.status() ==  WL_CONNECTED) {
+    return;
+  } else {
+    // Begin WiFi
+    Serial.print("Beginning WiFi connection");
+    WiFi.begin(ssid, password);
+
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+    }
+
+    Serial.println("");
+    Serial.println("WiFi connected, local IP:");
+    Serial.println(WiFi.localIP());
+
+    // Start countdown for turning off plug
+    g_sonosLastTimePlaying = millis();
+  }
+}
+
+//+=============================================================================
 // Connect to WiFi
 //
 void setup() {
@@ -169,18 +193,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println("ESP8266 Sonos Plug");
 
-  // Begin WiFi
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.println(WiFi.localIP());
-
+  check_wifi();
 }
 
 //+=============================================================================
@@ -189,6 +202,9 @@ void setup() {
 void loop() {
 
   if (g_sonosLastStateUpdate > millis() || millis() > g_sonosLastStateUpdate + SONOS_STATUS_POLL_DELAY_MS) {
+
+    // First make sure we have an internet connection
+    check_wifi();
 
     // bool plugIsOn = is_on();
     bool sonosIsPlaying = g_sonos.getState(g_sonosIP) == SONOS_STATE_PLAYING;
