@@ -19,18 +19,47 @@ const char* g_sonosMAC = "B8E93793F960";
 //+=============================================================================
 // Global variables
 //
-void ethConnectError() {
-  Serial.println("Couldn't connect to the network, bail!");
-}
-
-WiFiClient g_client;
-SonosUPnP g_sonos = SonosUPnP(g_client, ethConnectError);
 
 #define SONOS_STATUS_POLL_DELAY_MS 5000
 // Delay before turning plug off (5 [min] * 60 [sec/min] * 1000 [msec/sec] = 300000 [msec])
 #define PLUG_POWER_DELAY_MS 300000
 unsigned long g_sonosLastStateUpdate = 0;
 unsigned long g_sonosLastTimePlaying = 0;
+
+//
+// End configuration area
+//+=============================================================================
+
+void check_wifi() {
+  if (WiFi.status() ==  WL_CONNECTED) {
+    return;
+  } else {
+    // Begin WiFi
+    Serial.print("Beginning WiFi connection");
+    WiFi.begin(ssid, password);
+
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+    }
+
+    Serial.println("");
+    Serial.println("WiFi connected, local IP:");
+    Serial.println(WiFi.localIP());
+
+    // Start countdown for turning off plug
+    g_sonosLastTimePlaying = millis();
+  }
+}
+
+void ethConnectError() {
+  Serial.println("Sonos had issues posting, checking wifi and resetting countdown for shut-off");
+  check_wifi();
+  g_sonosLastTimePlaying = millis();
+}
+
+WiFiClient g_client;
+SonosUPnP g_sonos = SonosUPnP(g_client, ethConnectError);
 
 //+=============================================================================
 // Helper functions
@@ -161,37 +190,15 @@ bool turn_off() {
 }
 
 //+=============================================================================
-// Check if WiFi is connected, start if not
-//
-void check_wifi() {
-  if (WiFi.status() ==  WL_CONNECTED) {
-    return;
-  } else {
-    // Begin WiFi
-    Serial.print("Beginning WiFi connection");
-    WiFi.begin(ssid, password);
-
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Serial.print(".");
-    }
-
-    Serial.println("");
-    Serial.println("WiFi connected, local IP:");
-    Serial.println(WiFi.localIP());
-
-    // Start countdown for turning off plug
-    g_sonosLastTimePlaying = millis();
-  }
-}
-
-//+=============================================================================
 // Connect to WiFi
 //
 void setup() {
   // Initialize serial
   Serial.begin(115200);
   Serial.println("ESP8266 Sonos Plug");
+
+  WiFi.softAPdisconnect(true);
+  WiFi.disconnect(true);
 
   check_wifi();
 }
@@ -210,6 +217,11 @@ void loop() {
     bool sonosIsPlaying = g_sonos.getState(g_sonosIP) == SONOS_STATE_PLAYING;
     bool sonosIsMuted = g_sonos.getMute(g_sonosIP);
 
+    char uri[25] = "";
+    TrackInfo track = g_sonos.getTrackInfo(g_sonosIP, uri, sizeof(uri));
+    byte source = g_sonos.getSourceFromURI(track.uri);
+    bool sonosIsLineIn = (source == SONOS_SOURCE_LINEIN);
+
     Serial.println("");
 
     Serial.print("Sonos is playing: ");
@@ -218,8 +230,8 @@ void loop() {
     Serial.print("Sonos is muted: ");
     Serial.println(sonosIsMuted);
 
-    // Serial.print("Plug is on: ");
-    // Serial.println(plugIsOn);
+    Serial.print("Source is LINEIN: ");
+    Serial.println(sonosIsLineIn);
 
     Serial.println("");
 
@@ -248,8 +260,12 @@ void loop() {
       Serial.println(" seconds since something last played.");
 
       if (g_sonosLastTimePlaying > millis() || millis() > g_sonosLastTimePlaying + PLUG_POWER_DELAY_MS) {
-        Serial.println("--> Turning off plug.");
-        turn_off();
+        if (!sonosIsLineIn) {
+          Serial.println("--> Turning off plug.");
+          turn_off();
+        } else {
+          Serial.println("--> Beyond timeout, but keeping on due to LINEIN source");
+        }
       }
     // } else {
     //   // Sonos isn't playing, and plug is off. Nothing to do.
